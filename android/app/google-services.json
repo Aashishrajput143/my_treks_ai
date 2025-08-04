@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "814443057039",
+    "project_id": "vroar-188a2",
+    "storage_bucket": "vroar-188a2.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:814443057039:android:267f1339fb9b6682d585fa",
+        "android_client_info": {
+          "package_name": "com.vroar.vroar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIhfGX6yKUe8r-IAz6zhiWwwiHQE9_L-E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

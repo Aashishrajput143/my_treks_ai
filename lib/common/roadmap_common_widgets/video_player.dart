@@ -1,0 +1,536 @@
+import 'package:chewie/chewie.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
+
+class VideoPlayerWidget extends StatefulWidget {
+  const VideoPlayerWidget({super.key, required this.videoUrl, required this.screenHeight, required this.screenWidth, required this.onClose});
+  final String videoUrl;
+  final double screenHeight;
+  final double screenWidth;
+  final void Function() onClose;
+
+  @override
+  State<VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
+  TargetPlatform? _platform;
+  ChewieController? _chewieController;
+  double xPos = 10;
+  double yPos = 100;
+
+  late VideoPlayerController _controller;
+
+  bool visibleControls = true;
+  bool isFullscreen = false;
+  DeviceOrientation? previousOrientation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse(widget.videoUrl),
+      // closedCaptionFile: _loadCaptions(),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
+
+    _controller.addListener(() {
+      setState(() {});
+    });
+    _controller.setLooping(false);
+    _createChewieController();
+    // _controller.initialize();
+    // _controller.initialize().then((_) {
+    //   setState(() {
+    //     _toggleFullscreen(); // Automatically enter fullscreen on start
+    //     _controller.play(); // Start playing video immediately
+    //   });
+    // });
+    showHidecontrolls();
+  }
+
+  @override
+  void dispose() {
+    _restorePreviousOrientation();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _createChewieController() {
+    // final subtitles = [
+    //     Subtitle(
+    //       index: 0,
+    //       start: Duration.zero,
+    //       end: const Duration(seconds: 10),
+    //       text: 'Hello from subtitles',
+    //     ),
+    //     Subtitle(
+    //       index: 0,
+    //       start: const Duration(seconds: 10),
+    //       end: const Duration(seconds: 20),
+    //       text: 'Whats up? :)',
+    //     ),
+    //   ];
+
+    // final subtitles = [
+    //   Subtitle(
+    //     index: 0,
+    //     start: Duration.zero,
+    //     end: const Duration(seconds: 10),
+    //     text: const TextSpan(
+    //       children: [
+    //         TextSpan(
+    //           text: 'Hello',
+    //           style: TextStyle(color: Colors.red, fontSize: 22),
+    //         ),
+    //         TextSpan(
+    //           text: ' from ',
+    //           style: TextStyle(color: Colors.green, fontSize: 20),
+    //         ),
+    //         TextSpan(
+    //           text: 'subtitles',
+    //           style: TextStyle(color: Colors.blue, fontSize: 18),
+    //         )
+    //       ],
+    //     ),
+    //   ),
+    //   Subtitle(
+    //     index: 0,
+    //     start: const Duration(seconds: 10),
+    //     end: const Duration(seconds: 20),
+    //     text: 'Whats up? :)',
+    //     // text: const TextSpan(
+    //     //   text: 'Whats up? :)',
+    //     //   style: TextStyle(color: Colors.amber, fontSize: 22, fontStyle: FontStyle.italic),
+    //     // ),
+    //   ),
+    // ];
+
+    _chewieController = ChewieController(
+      videoPlayerController: _controller,
+      autoPlay: true,
+      looping: true,
+      autoInitialize: true,
+      fullScreenByDefault: true,
+      // progressIndicatorDelay: bufferDelay != null ? Duration(milliseconds: bufferDelay!) : null,
+
+      // additionalOptions: (context) {
+      //   return <OptionItem>[
+      //     OptionItem(
+      //       onTap: (context) => toggleVideo(),
+      //       iconData: Icons.live_tv_sharp,
+      //       title: 'Toggle Video Src',
+      //     ),
+      //   ];
+      // },
+      // subtitle: Subtitles(subtitles),
+      // showSubtitles: true,
+      // subtitleBuilder: (context, dynamic subtitle) => Container(
+      //   padding: const EdgeInsets.all(10.0),
+      //   child: subtitle is InlineSpan
+      //       ? RichText(
+      //           text: subtitle,
+      //         )
+      //       : Text(
+      //           subtitle.toString(),
+      //           style: const TextStyle(color: Colors.black),
+      //         ),
+      // ),
+
+      hideControlsTimer: const Duration(seconds: 2),
+
+      // Try playing around with some of these other options:
+
+      // showControls: false,
+      // materialProgressColors: ChewieProgressColors(
+      //   playedColor: Colors.red,
+      //   handleColor: Colors.blue,
+      //   backgroundColor: Colors.grey,
+      //   bufferedColor: Colors.lightGreen,
+      // ),
+      // placeholder: Container(
+      //   color: Colors.grey,
+      // ),
+      // autoInitialize: true,
+    );
+  }
+
+  void _toggleFullscreen() {
+    if (isFullscreen) {
+      _restorePreviousOrientation();
+    } else {
+      previousOrientation = MediaQuery.of(context).orientation == Orientation.portrait ? DeviceOrientation.portraitUp : DeviceOrientation.landscapeLeft;
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+    setState(() {
+      isFullscreen = !isFullscreen;
+    });
+  }
+
+  void _restorePreviousOrientation() {
+    if (previousOrientation != null) {
+      SystemChrome.setPreferredOrientations([
+        previousOrientation!,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+    }
+  }
+
+  showHidecontrolls() {
+    visibleControls = true;
+    setState(() {});
+    Future.delayed(const Duration(seconds: 2), () {
+      setState(() {
+        visibleControls = !_controller.value.isPlaying || _controller.value.isCompleted ? true : false;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // double screenWidth = MediaQuery.of(context).size.width;
+    // double screenHeight = MediaQuery.of(context).size.height;
+    double screenWidth = widget.screenWidth;
+    double screenHeight = widget.screenHeight;
+    double containerWidth = screenWidth;
+    double containerHeight = 250; // Size of the floating container
+    return Scaffold(
+      appBar: AppBar(),
+      body: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized
+                    ? Chewie(
+                        controller: _chewieController!,
+                      )
+                    : const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 20),
+                          Text('Loading'),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    // isFullscreen
+    //     ?
+    //     Scaffold(
+    //   appBar: AppBar(),
+    //   body: Stack(
+    //     children: [
+    //       Positioned.fill(
+    //         child: Container(
+    //           height: screenHeight,
+    //           width: containerWidth,
+    //           padding: const EdgeInsets.all(20),
+    //           decoration: const BoxDecoration(
+    //             color: Color.fromARGB(0, 24, 23, 23),
+    //             // borderRadius: BorderRadius.circular(15),
+    //           ),
+    //           child: AspectRatio(
+    //             aspectRatio: _controller.value.aspectRatio,
+    //             child: GestureDetector(
+    //               onTap: () => showHidecontrolls(),
+    //               child: Stack(
+    //                 alignment: Alignment.bottomCenter,
+    //                 children: <Widget>[
+    //                   VideoPlayer(_controller),
+    //                   // ClosedCaption(text: _controller.value.caption.text),
+    //                   AnimatedOpacity(
+    //                       opacity: visibleControls ? 1.0 : 0.0,
+    //                       duration: const Duration(microseconds: 500),
+    //                       child: Visibility(
+    //                           visible: visibleControls,
+    //                           child: _ControlsOverlay(
+    //                               controller: _controller,
+    //                               onClose: () {
+    //                                 _restorePreviousOrientation();
+    //                                 widget.onClose();
+    //                               },
+    //                               onToggleFullscreen: _toggleFullscreen,
+    //                               isFullscreen: isFullscreen))),
+    //                   VideoProgressIndicator(_controller, allowScrubbing: true),
+    //                 ],
+    //               ),
+    //             ),
+    //           ),
+    //         ),
+    //       ),
+    //     ],
+    //   ),
+    // );
+    // : AnimatedPositioned(
+    //     duration: const Duration(milliseconds: 300),
+    //     left: xPos,
+    //     top: yPos,
+    //     child: GestureDetector(
+    //       onPanUpdate: (details) {
+    //         setState(() {
+    //           xPos = (xPos + details.delta.dx).clamp(0, screenWidth - (containerWidth * 0.95));
+    //           yPos = (yPos + details.delta.dy).clamp(0, screenHeight - containerHeight - kToolbarHeight);
+    //         });
+    //       },
+    //       child: Container(
+    //         height: containerHeight,
+    //         width: containerWidth * 0.95,
+    //         padding: const EdgeInsets.all(20),
+    //         decoration: BoxDecoration(
+    //           color: const Color.fromARGB(0, 24, 23, 23),
+    //           borderRadius: BorderRadius.circular(15),
+    //           boxShadow: [
+    //             BoxShadow(color: isFullscreen ? Colors.black26 : Colors.transparent, blurRadius: 10, spreadRadius: 2, offset: const Offset(2, 2)),
+    //           ],
+    //         ),
+    //         child: AspectRatio(
+    //           aspectRatio: _controller.value.aspectRatio,
+    //           child: GestureDetector(
+    //             onTap: () => showHidecontrolls(),
+    //             child: Stack(
+    //               alignment: Alignment.bottomCenter,
+    //               children: <Widget>[
+    //                 VideoPlayer(_controller),
+    //                 // ClosedCaption(text: _controller.value.caption.text),
+    //                 AnimatedOpacity(
+    //                     opacity: visibleControls ? 1.0 : 0.0,
+    //                     duration: const Duration(microseconds: 500),
+    //                     child: Visibility(
+    //                         visible: visibleControls,
+    //                         child: _ControlsOverlay(
+    //                             controller: _controller,
+    //                             onClose: () {
+    //                               _restorePreviousOrientation();
+    //                               widget.onClose();
+    //                             },
+    //                             onToggleFullscreen: _toggleFullscreen,
+    //                             isFullscreen: isFullscreen))),
+    //                 VideoProgressIndicator(_controller, allowScrubbing: true),
+    //               ],
+    //             ),
+    //           ),
+    //         ),
+    //       ),
+    //     ),
+    //   );
+    // Scaffold(
+    //   appBar: AppBar(),
+    //   body: SingleChildScrollView(
+    //     child: Column(
+    //       children: <Widget>[
+    //         Container(padding: const EdgeInsets.only(top: 20.0)),
+    //         const Text('With remote mp4'),
+    //       ],
+    //     ),
+    //   ),
+    // );
+  }
+}
+
+class _ControlsOverlay extends StatelessWidget {
+  const _ControlsOverlay({required this.controller, required this.onClose, required this.onToggleFullscreen, required this.isFullscreen});
+  final void Function() onClose;
+  final void Function() onToggleFullscreen;
+  final bool isFullscreen;
+  final VideoPlayerController controller;
+
+  // static const List<Duration> _exampleCaptionOffsets = <Duration>[
+  //   Duration(seconds: -10),
+  //   Duration(seconds: -3),
+  //   Duration(seconds: -1, milliseconds: -500),
+  //   Duration(milliseconds: -250),
+  //   Duration.zero,
+  //   Duration(milliseconds: 250),
+  //   Duration(seconds: 1, milliseconds: 500),
+  //   Duration(seconds: 3),
+  //   Duration(seconds: 10),
+  // ];
+  static const List<double> _examplePlaybackRates = <double>[
+    0.25,
+    0.5,
+    1.0,
+    1.5,
+    2.0,
+    3.0,
+    5.0,
+    10.0,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: <Widget>[
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 50),
+          reverseDuration: const Duration(milliseconds: 200),
+          child: controller.value.isPlaying
+              ? const SizedBox.shrink()
+              : const ColoredBox(
+                  color: Colors.black26,
+                  child: Center(
+                    child: Icon(
+                      Icons.play_arrow,
+                      color: Colors.white,
+                      size: 100.0,
+                      semanticLabel: 'Play',
+                    ),
+                  ),
+                ),
+        ),
+        GestureDetector(
+          onTap: () {
+            controller.value.isPlaying ? controller.pause() : controller.play();
+          },
+        ),
+        Align(
+            alignment: Alignment.topLeft,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
+                  // icon: Icon(isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.black),
+                  onPressed: onToggleFullscreen,
+                ),
+                // IconButton(
+                //   icon: const Icon(Icons.close, color: Colors.white),
+                //   onPressed: onClose,
+                // ),
+              ],
+            )
+            // PopupMenuButton<Duration>(
+            //   initialValue: controller.value.captionOffset,
+            //   tooltip: 'Caption Offset',
+            //   onSelected: (Duration delay) {
+            //     controller.setCaptionOffset(delay);
+            //   },
+            //   itemBuilder: (BuildContext context) {
+            //     return <PopupMenuItem<Duration>>[
+            //       for (final Duration offsetDuration in _exampleCaptionOffsets)
+            //         PopupMenuItem<Duration>(
+            //           value: offsetDuration,
+            //           child: Text('${offsetDuration.inMilliseconds}ms'),
+            //         )
+            //     ];
+            //   },
+            //   child: Padding(
+            //     padding: const EdgeInsets.symmetric(
+            //       // Using less vertical padding as the text is also longer
+            //       // horizontally, so it feels like it would need more spacing
+            //       // horizontally (matching the aspect ratio of the video).
+            //       vertical: 12,
+            //       horizontal: 16,
+            //     ),
+            //     child: Text('${controller.value.captionOffset.inMilliseconds}ms'),
+            //   ),
+            // ),
+            ),
+        Align(
+          alignment: Alignment.topRight,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              PopupMenuButton<double>(
+                initialValue: controller.value.playbackSpeed,
+                tooltip: 'Playback speed',
+                onSelected: (double speed) {
+                  controller.setPlaybackSpeed(speed);
+                },
+                itemBuilder: (BuildContext context) {
+                  return <PopupMenuItem<double>>[
+                    for (final double speed in _examplePlaybackRates)
+                      PopupMenuItem<double>(
+                        value: speed,
+                        child: Text('${speed}x'),
+                      )
+                  ];
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    // Using less vertical padding as the text is also longer
+                    // horizontally, so it feels like it would need more spacing
+                    // horizontally (matching the aspect ratio of the video).
+                    vertical: 12,
+                    horizontal: 4,
+                  ),
+                  child: Text('${controller.value.playbackSpeed}x'),
+                ),
+              ),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: GestureDetector(onTap: () => onClose(), child: const Icon(Icons.close, color: Colors.black, size: 22))),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class AnimatedFloatingContainer extends StatefulWidget {
+  @override
+  _AnimatedFloatingContainerState createState() => _AnimatedFloatingContainerState();
+}
+
+class _AnimatedFloatingContainerState extends State<AnimatedFloatingContainer> {
+  double xPos = 100;
+  double yPos = 100;
+
+  @override
+  Widget build(BuildContext context) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double containerSize = 100; // Size of the floating container
+    return Scaffold(
+      appBar: AppBar(title: const Text("Animated Floating Container")),
+      body: Stack(
+        children: [
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            left: xPos,
+            top: yPos,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  // Ensure the container doesn't move out of screen bounds
+                  xPos = (xPos + details.delta.dx).clamp(0, screenWidth - containerSize);
+                  yPos = (yPos + details.delta.dy).clamp(0, screenHeight - containerSize - kToolbarHeight);
+                });
+              },
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    const BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                      offset: Offset(5, 5),
+                    ),
+                  ],
+                ),
+                child: const Center(child: Text("Drag Me", style: TextStyle(color: Colors.white))),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

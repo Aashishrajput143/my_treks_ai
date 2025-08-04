@@ -1,0 +1,1195 @@
+// ignore_for_file: unused_local_variable
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:vroar/modules/controller/coins_review_controller.dart';
+import 'package:vroar/routes/routes_class.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+
+import '../../../models/roadmap_model.dart';
+import '../../../modules/controller/roadmap_controllers/pdf_view_controller.dart';
+import '../../../utils/roadmap_tiles_positions.dart';
+import '../../../utils/utils.dart';
+import '../../../common/constants.dart';
+import '../../../common/common_methods.dart';
+import '../../../common/roadmap_common_widgets/youtube_video_player.dart';
+import '../../../data/response/status.dart';
+import '../../../models/get_user_roadmap_journey_model.dart';
+import '../../../models/upload_media_model.dart';
+import '../../../resources/images.dart';
+import '../../../resources/strings.dart';
+import '../../../utils/roadmap_enums.dart';
+import '../../repository/roadmap_repository.dart';
+import '../../repository/signup_repository.dart';
+import '../../screen/roadmap/roadmap_screen.dart';
+import '../common_screen_controller.dart';
+import '../../../common/shared_preference.dart';
+// import '../../data/response/status.dart';
+
+class RoadmapController extends GetxController with GetTickerProviderStateMixin {
+  TransformationController transformationController = TransformationController();
+  CommonScreenController commonScreenController = Get.put<CommonScreenController>(CommonScreenController());
+  CoinsReviewController coinsReviewController = Get.put(CoinsReviewController());
+  late AnimationController animationController;
+  double imageHeight = 3840; // 7680;
+  double imageWidth = 2048; // 4096;
+  RxBool isLevelCompleted = false.obs,
+      isRoadmapAssign = true.obs,
+      showUploadBtn = true.obs,
+      showSelectedfile = false.obs,
+      showContinueBtn = false.obs,
+      showWriteAssBtn = true.obs,
+      showInHouseVideo = false.obs,
+      isIntLoadDone = false.obs,
+      isAnimationPlaying = true.obs,
+      showLoader = false.obs,
+      showRoadmapCompletedLottie = false.obs,
+      isImageLoaded = false.obs,
+      isMarkComplete = false.obs,
+      isRoadMapCompleted = false.obs,
+      needToCallApi = true.obs;
+  RxInt lastUnlockedLevel = 0.obs, currRoadmapLevelLength = 0.obs, currIndex = 0.obs, currStepId = 0.obs, trackLevel = 0.obs, currRoadmapCompeletedSteps = 0.obs, currRoadmapTotalSteps = 0.obs;
+  RxString inHouseVideoUrl = ''.obs, roadmapThemeImage = ''.obs, currRoadmapId = ''.obs, currRoadmapMetadata = ''.obs, currRoadmapJourneyId = ''.obs, nextRoadmapId = ''.obs, nextRoadmapMetadata = ''.obs, nextRoadmapJourneyId = ''.obs;
+  final roadmapTilesPositions = RoadmapTilesPositions();
+  List<Offset> levelPositions = [];
+  late Image backgroundImage;
+  var picker = FilePickerIO().obs;
+  var picker1 = ImagePicker().obs;
+  var selectedFile = Rxn<String>();
+  var selectedFileSize = Rxn<String>();
+  var selectedFilePath = Rxn<String>();
+  String userName = 'Jhony';
+  var selectedImage = Rxn<String>();
+  var totalSteps = 0.obs;
+  var totalCompletedSteps = 0.obs;
+  var showCountToggle = false.obs;
+  var showCaseView = false.obs;
+  var toggleIcon = "STRENGTHS".obs;
+  final api = SignupRepository();
+
+  final GlobalKey two = GlobalKey();
+  final GlobalKey three = GlobalKey();
+  final GlobalKey four = GlobalKey();
+
+  RxMap<String, List<Map<String, dynamic>>> filteredData = <String, List<Map<String, dynamic>>>{}.obs;
+
+  final uploadResultFile = UploadMediaModel().obs;
+  void setUploadResultFile(UploadMediaModel value) => uploadResultFile.value = value;
+
+  final StreamController<RoadmapJourneyModel> _roadmapStreamController = StreamController.broadcast();
+  Stream<RoadmapJourneyModel> get roadmapStream => _roadmapStreamController.stream;
+
+  final getRoadmapData = RoadmapJourneyModel().obs;
+  final getRoadmapResponse = RoadmapJourneyUpdateResponseModel().obs;
+  final roadMapApi = RoadmapRepository();
+
+  final StreamController<GetUserRoadmapJourneyModel> _roadmapJourneysListStreamController = StreamController.broadcast();
+  Stream<GetUserRoadmapJourneyModel> get roadmapJourneysListStream => _roadmapJourneysListStreamController.stream;
+
+  final getRoadmapJourneysListData = GetUserRoadmapJourneyModel().obs;
+  final getRoadmapJourneysListResponse = GetUserRoadmapJourneyModel().obs;
+  final getRoadmapJourneyUpdateResponse = RoadmapJourneyUpdateResponseModel().obs;
+
+  void setError(String value) => error.value = value;
+  RxString error = ''.obs;
+  final rxRequestStatus = Status.LOADING.obs;
+
+  void setRxRequestStatus(Status value) {
+    rxRequestStatus.value = value;
+    update();
+  }
+
+  void setRoadmapData(RoadmapJourneyModel value) {
+    getRoadmapData.value = value;
+    _roadmapStreamController.add(value);
+    setRxRequestStatus(Status.COMPLETED);
+    update();
+  }
+
+  void setRoadmapUpdateResponse(RoadmapJourneyUpdateResponseModel value) {
+    getRoadmapResponse.value = value;
+    // _roadmapStreamController.add(value);
+    setRxRequestStatus(Status.COMPLETED);
+  }
+
+  void setRoadmapJourneysListData(GetUserRoadmapJourneyModel value) {
+    getRoadmapJourneysListData.value = value;
+    _roadmapJourneysListStreamController.add(value);
+    setRxRequestStatus(Status.COMPLETED);
+  }
+
+  var activeNodes = List.generate(4, (index) => false.obs);
+
+  @override
+  void onInit() {
+    super.onInit();
+    fetchInitialData();
+    animationController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+  }
+
+  @override
+  void onClose() {
+    animationController.dispose();
+    transformationController.removeListener(_checkBounds);
+    transformationController.dispose();
+    super.onClose();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    Future.delayed(const Duration(milliseconds: 300), () {
+      scrollToLastUnlockedLevel(false, 0, currRoadmapId.value);
+    });
+  }
+
+  Future<void> fetchInitialData() async {
+    setRxRequestStatus(Status.LOADING);
+    preloadImage();
+    await getRoadmapJourneysListApi();
+    // getRoadmapApi();
+    isIntLoadDone.value = true;
+  }
+
+  void _checkBounds() {
+    if (levelPositions.isEmpty) return;
+
+    Matrix4 matrix = transformationController.value;
+    double y = matrix.getTranslation().y;
+    double x = matrix.getTranslation().x;
+
+    // Get the current scale to maintain it during adjustments
+    double currentScale = matrix.getMaxScaleOnAxis();
+
+    // Calculate bounds dynamically
+    double dynamicMinY = calculateMinY();
+    double adjustedMinY = GetPlatform.isAndroid ? (dynamicMinY + 55) : dynamicMinY;
+
+    // Horizontal bounds
+    double minX = -imageWidth + Get.width;
+    double maxX = 0;
+    double adjustedX = x.clamp(minX, maxX);
+
+    // Determine if we should restrict movement based on unlocked level
+    bool shouldRestrict = lastUnlockedLevel.value < 8 || lastUnlockedLevel.value < 14 || lastUnlockedLevel.value < 17;
+
+    // If we need to restrict vertical movement
+    if (shouldRestrict && y > adjustedMinY) {
+      // Apply both vertical and horizontal constraints
+      transformationController.value = Matrix4.translationValues(adjustedX, adjustedMinY, 0)..multiply(Matrix4.diagonal3Values(currentScale, currentScale, 1));
+    }
+    // If only horizontal constraint needed
+    else if (x < minX || x > maxX) {
+      transformationController.value = Matrix4.translationValues(adjustedX, y, 0)..multiply(Matrix4.diagonal3Values(currentScale, currentScale, 1));
+    }
+  }
+
+  double calculateMinY() {
+    if (levelPositions.isEmpty) return 0;
+
+    // Simplified logic for min Y calculation based on level count
+    if (Platform.isAndroid) {
+      if (levelPositions.length >= 8) {
+        return -Get.height * 1.4; // More levels need more scrollable area
+      } else if (levelPositions.length >= 5) {
+        return -Get.height * 1.37;
+      } else if (levelPositions.length > 1) {
+        return -Get.height * 1.5;
+      } else {
+        return -Get.height * 1.55;
+      }
+    } else {
+      // iOS
+      if (levelPositions.length < 2) {
+        return -Get.height * 2.2;
+      } else if (levelPositions.length < 5) {
+        return -Get.height * 1.9;
+      } else if (levelPositions.length < 8) {
+        return -Get.height * 1.7;
+      } else if (levelPositions.length < 11) {
+        return -Get.height * 1.6;
+      } else if (levelPositions.length < 15) {
+        return -Get.height * 1.4;
+      } else {
+        return -Get.height * 1.2;
+      }
+    }
+  }
+
+  void preloadImage() async {
+    backgroundImage = Image.asset('assets/images/roadmap_demo.png');
+
+    // Ensure image is fully loaded before updating UI
+    await precacheImage(backgroundImage.image, Get.context!);
+
+    isImageLoaded.value = true;
+    backgroundImage.image.resolve(const ImageConfiguration()).addListener(
+      ImageStreamListener((_, __) {
+        isImageLoaded.value = true; // Notify UI when image is ready
+      }),
+    );
+    update();
+  }
+
+  void onInteractionEnd() {
+    transformationController.toScene(Offset.zero);
+    update();
+  }
+
+  void onChangeCurrentScreen(int index) {
+    commonScreenController.selectedIndex.value = index;
+    update();
+  }
+
+  Future<bool> levelTagColor(String roadmapId, int index) async => await AppPreferences.isLevelCompleted(roadmapId, index);
+
+  void changeRoadMap(int level, int currRoadmapLevelLength, {bool callApi = true}) {
+    const roadmapScreen = RoadmapScreen();
+    print("level===>$level");
+    print("currRoadmapLevelLength===>$currRoadmapLevelLength");
+
+    if (level == currRoadmapLevelLength - 1) {
+      print("currRoadmapLength===>$currRoadmapLevelLength");
+      showLoader.value = false;
+      roadmapScreen.roadMapCompletedDialog(Get.width, Get.height);
+      showLoader.value = true;
+      currRoadmapId.value = "";
+      currRoadmapJourneyId.value = "";
+      if (callApi) {
+        getRoadmapJourneysListApi(isAnimate: false, isMarkcomplete: true, isChangeRoadmap: true);
+      }
+    }
+  }
+
+  Future markLevelCompleted(int level, int stepId, String roadmapId, {String? answer, bool isPDF = false, bool isAnimate = true, bool lastTile = false, String? articleWriteupAnswer, String? assignmentLink}) async {
+    isMarkComplete.value = false;
+    update();
+
+    showLoader.value = true;
+
+    if (!await CommonMethods.checkInternetConnectivity()) {
+      CommonMethods.showToast(appStrings.weUnableCheckData);
+      return;
+    }
+
+    try {
+      RoadmapJourneyUpdateModel data = RoadmapJourneyUpdateModel(
+        roadmapJourneyId: int.parse(getRoadmapData.value.data!.id!),
+        roadmapStepId: stepId,
+        assignmentAnswer: answer,
+        assignmentAnswerLink: assignmentLink,
+        articleWriteup: articleWriteupAnswer,
+      );
+
+      final response = await roadMapApi.roadmapLevelUpdate(data.toJson());
+      setRoadmapUpdateResponse(response);
+
+      if (response.statusCode == 200) {
+        if (answer != null) Get.back(closeOverlays: true);
+        showLoader.value = true;
+        await AppPreferences.saveLevelCompleted(roadmapId, level);
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        trackLevel.value = level;
+        int newLevel = level + 1;
+        await prefs.setInt("$roadmapId-${Constants.lastUnlockedLevel}", newLevel);
+        await prefs.setInt(Constants.lastUnlockedLevel, newLevel);
+        lastUnlockedLevel.value = newLevel;
+        update();
+        if (lastTile) {
+          changeRoadMap(trackLevel.value, currRoadmapLevelLength.value, callApi: false);
+        }
+        await getRoadmapJourneysListApi(isAnimate: false, isMarkcomplete: true);
+        isMarkComplete.value = true;
+        // bool isRoadmapCompleted = currRoadmapCompeletedSteps.value >= currRoadmapTotalSteps.value;
+
+        // await getRoadmapApi(isAnimate: isAnimate);
+        // loadLastUnlockedLevel(roadmapId);
+
+        update();
+        return true;
+      } else {
+        handleApiError(error);
+        return false;
+      }
+    } catch (error) {
+      handleApiError(error);
+      return false;
+    }
+  }
+
+  Future<void> initializeNewRoadmapLevels(String roadmapId) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+
+      // Check if we already have a stored level for this roadmap
+      int storedLevel = prefs.getInt("$roadmapId-${Constants.lastUnlockedLevel}") ?? 0;
+
+      // If no level is stored, set the first level as unlocked
+      if (storedLevel == 0) {
+        await prefs.setInt("$roadmapId-${Constants.lastUnlockedLevel}", 1);
+        await prefs.setInt(Constants.lastUnlockedLevel, 1);
+        lastUnlockedLevel.value = 1;
+      } else {
+        // Use the stored level
+        lastUnlockedLevel.value = storedLevel;
+        await prefs.setInt(Constants.lastUnlockedLevel, storedLevel);
+      }
+
+      // Make sure to call loadLastUnlockedLevel to update UI
+      loadLastUnlockedLevel(roadmapId);
+      update();
+    } catch (e) {
+      print("Error initializing new roadmap levels: $e");
+      // Fallback to default level 1
+      lastUnlockedLevel.value = 1;
+      update();
+    }
+  }
+
+  Future<void> loadLastUnlockedLevel(roadmapId) async {
+    // SharedPreferences prefs = await SharedPreferences.getInstance();
+    // lastUnlockedLevel.value = prefs.getInt('lastUnlockedLevel') ?? 0;
+    final stopwatch = Stopwatch()..start();
+
+    Utils.getIntPreferenceValues("$roadmapId-${Constants.lastUnlockedLevel}").then((val) => {
+          // Scroll to last unlocked level after loading (Ensure UI updates)
+          lastUnlockedLevel.value = val ?? 0,
+          Future.delayed(const Duration(milliseconds: 300), () {
+            scrollToLastUnlockedLevel(false, 0, roadmapId);
+          }),
+        });
+    stopwatch.stop();
+    Utils.printLog('Execution time: ${stopwatch.elapsedMilliseconds} ms');
+  }
+
+  Future<void> scrollToLastUnlockedLevel(bool callCompletedLevel, int level, String roadmapId) async {
+    if (levelPositions.isEmpty) return; // Early exit if no positions
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    int lastLevel = callCompletedLevel ? level : prefs.getInt("$roadmapId-${Constants.lastUnlockedLevel}") ?? 1;
+
+    int safeLevelIndex = lastLevel.clamp(0, levelPositions.length - 1);
+    Offset targetOffset = levelPositions[safeLevelIndex];
+
+    // Extract current transformation matrix
+    Matrix4 currentMatrix = transformationController.value.clone();
+
+    // Calculate target position with optimized bounds
+    double moveX, moveY;
+
+    // Optimized position calculation
+    if (lastLevel >= 17) {
+      moveX = (-targetOffset.dx + Get.width / 4).clamp(-imageWidth + Get.width, 0);
+      moveY = (-targetOffset.dy + Get.height / 4).clamp(-imageHeight + Get.height, 0);
+    } else if (lastLevel < 3) {
+      final heightOffset = GetPlatform.isAndroid ? (Get.height - 70) : (Get.height - 90);
+      moveX = (-targetOffset.dx + Get.width / 1.8).clamp(-imageWidth + Get.width, imageWidth);
+      moveY = Get.height <= 667 && lastLevel <= 3
+          ? (-targetOffset.dy + heightOffset / 1.3).clamp(-imageHeight + heightOffset, imageHeight)
+          : lastLevel <= 3
+              ? (-targetOffset.dy + heightOffset / 1.8).clamp(-imageHeight + heightOffset, imageHeight)
+              : (-targetOffset.dy + (Get.height - 90) / 1.8).clamp(-imageHeight + (Get.height - 90), imageHeight);
+    } else if (lastLevel >= (levelPositions.length - currRoadmapLevelLength.value)) {
+      moveX = (-targetOffset.dx + Get.width / 2).clamp(-imageWidth + Get.width, 0);
+      moveY = (-targetOffset.dy + (Get.height - 90) / 3).clamp(-imageHeight + (Get.height - 90), 0);
+    } else {
+      moveX = (-targetOffset.dx + Get.width / 2).clamp(-imageWidth + Get.width, 0);
+      moveY = (-targetOffset.dy + Get.height / 3).clamp(-imageHeight + Get.height, 0);
+    }
+
+    // Create and animate with the target matrix
+    Matrix4 targetMatrix = (Matrix4.identity()..translate(moveX, moveY, 0));
+    final matrixTween = Matrix4Tween(begin: currentMatrix, end: targetMatrix);
+
+    Animation<Matrix4> animation = matrixTween.animate(
+      CurvedAnimation(parent: animationController, curve: Curves.easeOut),
+    );
+
+    // Use a single listener for better performance
+    animation.addListener(() {
+      transformationController.value = animation.value;
+    });
+
+    // Start animation
+    await animationController.forward(from: 0);
+    update();
+  }
+
+  void generateLevelPositions(int totalLevels) {
+    double screenWidth = Get.width;
+    double pathCenterX = screenWidth / 2;
+    double amplitude = screenWidth * 0.25;
+    double spacingY = imageHeight / (totalLevels + 1); // Ensure proper spacing
+
+    levelPositions = List.generate(totalLevels, (index) {
+      // Ensure level 0,1,2 have valid positions
+      double x = pathCenterX + (index.isEven ? amplitude : -amplitude);
+
+      // Adjust Y to prevent off-screen placement
+      double y = imageHeight - ((index + 1) * spacingY);
+
+      return Offset(x, y);
+    });
+    print(levelPositions);
+    update();
+  }
+
+  RoadmapMetaDataTags? getEnumFromValueForMetaData(String value) {
+    return RoadmapMetaDataTags.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => throw ArgumentError("Invalid value: $value"),
+    );
+  }
+
+  initializeLevelPositions({isMarkComplete = false}) async {
+    final RoadmapMetaDataTags? metaDataTags = getEnumFromValueForMetaData(currRoadmapMetadata.value);
+
+    if (!isMarkComplete) transformationController.value = Matrix4.identity();
+    // Set defaults
+    roadmapThemeImage.value = AppImages().roadMapDemo2Image;
+    List<Offset> allPositions = roadmapTilesPositions.greenThemeAllPositions;
+
+    // Efficiently determine theme based on metadata
+    switch (metaDataTags) {
+      case RoadmapMetaDataTags.industry:
+        allPositions = roadmapTilesPositions.snowThemeAllPositions;
+        roadmapThemeImage.value = AppImages().roadMapSnowBG2Image;
+        break;
+      case RoadmapMetaDataTags.strength:
+        allPositions = roadmapTilesPositions.desertThemeAllPositions;
+        roadmapThemeImage.value = AppImages().roadMapDesertBG2Image;
+        break;
+      case RoadmapMetaDataTags.softSkills:
+        allPositions = roadmapTilesPositions.underWaterThemeAllPositions;
+        roadmapThemeImage.value = AppImages().roadMapUnderWaterBGImage;
+        break;
+      default:
+        roadmapThemeImage.value = AppImages().roadMapDemo2Image;
+        allPositions = roadmapTilesPositions.greenThemeAllPositions;
+    }
+
+    isImageLoaded.value = true;
+
+    // Handle level positions efficiently
+    int validLength = currRoadmapLevelLength.value.clamp(0, allPositions.length);
+    levelPositions = allPositions.sublist(0, validLength);
+
+    // Only add listener when needed
+    // ignore: invalid_use_of_protected_member
+    if (transformationController.hasListeners) {
+      transformationController.removeListener(_checkBounds);
+    }
+
+    if (levelPositions.length < 14) {
+      transformationController.addListener(_checkBounds);
+    }
+
+    update();
+    return levelPositions;
+  }
+
+  RoadMapContentType? getEnumFromValue(String value) {
+    return RoadMapContentType.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => throw ArgumentError("Invalid value: $value"),
+    );
+  }
+
+  RoadmapMetaDataTags? getEnumFromMetaDataValue(String value) {
+    return RoadmapMetaDataTags.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => throw ArgumentError("Invalid value: $value"),
+    );
+  }
+
+  // List contentList = ['Article PDF', 'Assignment'];
+  Future<void> handleAction(RoadmapStep step, bool isCurrent, int index, String? roadmapId, BuildContext context) async {
+    const roadmapScreen = RoadmapScreen();
+    final commonScreenController = Get.put(CommonScreenController());
+    final pdfViewController = Get.put(PdfViewController());
+    final RoadMapContentType? contentTypeEnum = getEnumFromValue(step.content?.contentType ?? '');
+    final isQuiz = (step.content?.quizEnabled ?? false) ? true : false;
+    final quizId = step.content?.quiz?.id ?? '0';
+    final journeyId = currRoadmapJourneyId.value;
+    final bool isCompleted = step.status == "COMPLETED";
+    updateCurrIndexStepId(index, int.tryParse(step.id ?? '0') ?? 0);
+
+    switch (contentTypeEnum) {
+      case RoadMapContentType.assignment:
+        if (isCurrent && !isCompleted) {
+          revertBack();
+          roadmapScreen.assignmentDialog(context, pdfViewController, step.content?.contentLink ?? '');
+        } else {
+          roadmapScreen.assignmentCompletedDialog(pdfViewController, step.content?.contentLink ?? '');
+        }
+        break;
+
+      case RoadMapContentType.articlePdf:
+        bool isCorrectPdfLink = pdfLinkValidation(step.content?.contentLink ?? '');
+        if (isCurrent && !isCompleted) {
+          roadmapScreen.commonContentDialog('Open Article', appImages.article, appImages.articleTitle, getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? "Message", 'Mark as Complete', pdfViewController, step.content?.contentLink ?? '', () {
+            Get.back();
+            onClickMarkAsCompletePdf(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId);
+          }, coins: step.points?.toString(), time: step.time?.split(' ')[0], isTakeQuiz: isQuiz, quizId: quizId, journeyId: roadmapId, title: 'Article', isCorrectPdfLink: isCorrectPdfLink, isTileCompleted: isCompleted);
+        } else {
+          roadmapScreen.commonContentDialog('Open Article', appImages.articleCompleted, appImages.articleTitle, getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? "Message", 'Close', pdfViewController, step.content?.contentLink ?? '', () {
+            Get.back();
+          }, coins: step.points?.toString(), time: step.time?.split(' ')[0], isTakeQuiz: false, quizId: quizId, journeyId: roadmapId, title: 'Article', isCorrectPdfLink: isCorrectPdfLink, isTileCompleted: isCompleted);
+        }
+        break;
+
+      case RoadMapContentType.youtubeVideoLink:
+        if (isCurrent && !isCompleted) {
+          roadmapScreen.openVideoDialog(() async {
+            Get.back();
+            await markLevelCompleted(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId ?? '', isAnimate: false);
+            changeRoadMap(trackLevel.value, currRoadmapLevelLength.value);
+            // if (isMarkComplete.isTrue) roadmapScreen.videoCompleteDialog(step.content?.contentLink, "youtube", index, int.tryParse(step.id ?? '0') ?? 0);
+          }, () {
+            Get.back();
+            // markLevelCompleted(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId ?? '');
+            playYtVideo(step.content?.contentLink, index, int.tryParse(step.id ?? '0') ?? 0);
+          }, "youtube", coins: step.points?.toString(), time: step.time?.split(' ')[0], message: getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description, isTakeQuiz: isQuiz, quizId: quizId, journeyId: roadmapId);
+        } else {
+          roadmapScreen.videoCompleteDialog(step.content?.contentLink, "youtube", index, int.tryParse(step.id ?? '0') ?? 0);
+        }
+        break;
+
+      case RoadMapContentType.nativeVideoLink:
+        if (isCurrent && !isCompleted) {
+          roadmapScreen.openVideoDialog(() async {
+            Get.back();
+            await markLevelCompleted(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId ?? '', isAnimate: false);
+            changeRoadMap(trackLevel.value, currRoadmapLevelLength.value);
+            // if (isMarkComplete.isTrue) roadmapScreen.videoCompleteDialog(step.content?.contentLink, "video", index, int.tryParse(step.id ?? '0') ?? 0);
+          }, () {
+            Get.back();
+            // markLevelCompleted(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId ?? '');
+            roadmapScreen.playVideoInPopUp(step.content?.contentLink);
+            playVideo(step.content?.contentLink);
+          }, "video",
+              message: getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? 'Introductory video to show a glimpse of how the application will work for the student',
+              coins: step.points?.toString(),
+              time: step.time?.split(' ')[0],
+              isTakeQuiz: isQuiz,
+              quizId: quizId,
+              journeyId: roadmapId);
+        } else {
+          roadmapScreen.videoCompleteDialog(step.content?.contentLink, "video", index, int.tryParse(step.id ?? '0') ?? 0);
+        }
+        break;
+
+      case RoadMapContentType.journalLink:
+        bool isCorrectPdfLink = pdfLinkValidation(step.content?.contentLink ?? '');
+        if (isCurrent && !isCompleted) {
+          roadmapScreen.commonContentDialog('Open Article', appImages.journal, appImages.articleTitle, getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? "Message", 'Mark as Complete', pdfViewController, step.content?.contentLink ?? '', () {
+            Get.back();
+            onClickMarkAsCompletePdf(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId);
+          }, coins: step.points?.toString(), time: step.time?.split(' ')[0], isTakeQuiz: isQuiz, quizId: quizId, journeyId: roadmapId, title: 'Article', isCorrectPdfLink: isCorrectPdfLink, isTileCompleted: isCompleted);
+        } else {
+          roadmapScreen.commonContentDialog(
+              'Open Article', appImages.journalCompleted, appImages.articleTitle, getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? "Message", 'Close', pdfViewController, step.content?.contentLink ?? '', () => Get.back(),
+              coins: step.points?.toString(), time: step.time?.split(' ')[0], isTakeQuiz: false, quizId: quizId, journeyId: roadmapId, title: 'Article', isCorrectPdfLink: isCorrectPdfLink, isTileCompleted: isCompleted);
+        }
+        break;
+
+      case RoadMapContentType.articleLink:
+        bool isCorrectPdfLink = pdfLinkValidation(step.content?.contentLink ?? '');
+        if (isCurrent && !isCompleted) {
+          roadmapScreen.commonContentDialog('Open Article', appImages.journal, appImages.articleTitle, getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? "Message", 'Mark as Complete', pdfViewController, step.content?.contentLink ?? '', () {
+            Get.back();
+            onClickMarkAsCompletePdf(index, int.tryParse(step.id ?? '0') ?? 0, roadmapId);
+          }, coins: step.points?.toString(), time: step.time?.split(' ')[0], isTakeQuiz: isQuiz, quizId: quizId, journeyId: roadmapId, title: 'Article', isCorrectPdfLink: isCorrectPdfLink, isTileCompleted: isCompleted);
+        } else {
+          roadmapScreen.commonContentDialog(
+              'Open Article', appImages.journalCompleted, appImages.articleTitle, getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? "Message", 'Close', pdfViewController, step.content?.contentLink ?? '', () => Get.back(),
+              coins: step.points?.toString(), time: step.time?.split(' ')[0], isTakeQuiz: false, quizId: quizId, journeyId: roadmapId, title: 'Article', isCorrectPdfLink: isCorrectPdfLink, isTileCompleted: isCompleted);
+        }
+        break;
+
+      case RoadMapContentType.articleWriteup:
+        if (isCurrent && !isCompleted) {
+          roadmapScreen.roadMapWriteUpDialog(() {
+            // Get.back();
+            Get.toNamed(RoutesClass.articleWriteup);
+            // commonScreenController.selectedIndex.value = 17;
+          }, false, pdfViewController, pdfLink: step.content?.contentLink, message: getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? appStrings.assessmentDesc);
+        } else {
+          roadmapScreen.roadMapWriteUpDialog(() => Get.back(), true, pdfViewController, pdfLink: step.content?.contentLink, message: getRoadmapData.value.data?.roadmapSteps?[currIndex.value].content?.description ?? appStrings.assessmentDesc);
+        }
+        break;
+
+      default:
+        Utils.printLog("Invalid type: ${step.content?.contentType}");
+    }
+  }
+
+  bool pdfLinkValidation(text) {
+    final RegExp pdfLinkRegex = RegExp(r'https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)\.pdf');
+
+    Iterable<RegExpMatch> matches = pdfLinkRegex.allMatches(text);
+
+    for (var match in matches) {
+      String pdfUrl = match.group(0)!;
+      Utils.printLog('Found PDF link: $pdfUrl');
+      return true;
+    }
+    return false;
+  }
+
+  jounralUrl(link) async {
+    final uri = Uri.parse(link);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  updateCurrIndexStepId(index, stepId) {
+    currIndex.value = index;
+    currStepId.value = stepId;
+    update();
+  }
+
+  playYtVideo(url, int? currIndex, int? stepId) {
+    String? videoId;
+    videoId = YoutubePlayer.convertUrlToId(url);
+    // videoId = YoutubePlayer.convertUrlToId("https://www.youtube.com/watch?v=IhPcbusMv1g");
+    print(videoId);
+    Get.to(() => YouTubeVideoPlayerWidget(videoId: videoId!));
+  }
+
+  onClickGallupVideo(url, level, stepId, roadmapId) {
+    playVideo(url).then(() => {markLevelCompleted(level, stepId, roadmapId)});
+  }
+
+  playVideo(url) {
+    // Get.to(() => VideoPlayerWidget(videoUrl: url));
+    inHouseVideoUrl.value = url;
+    showInHouseVideo.value = true;
+    update();
+  }
+
+  hideVideoPlayWidget() {
+    showInHouseVideo.value = false;
+    update();
+  }
+
+  revertBack({showUpload = true, showWrite = true}) {
+    showUploadBtn.value = showUpload;
+    showSelectedfile.value = false;
+    showContinueBtn.value = false;
+    showWriteAssBtn.value = showWrite;
+    selectedFile.value = "";
+    selectedFileSize.value = "";
+    selectedFilePath.value = "";
+    update();
+  }
+
+  static String getFileSizeString({required int bytes, int decimals = 0}) {
+    const suffixes = ["b", "kb", "mb", "gb", "tb"];
+    if (bytes == 0) return '0${suffixes[0]}';
+    var i = (log(bytes) / log(1024)).floor();
+    return ((bytes / pow(1024, i)).toStringAsFixed(decimals)) + suffixes[i];
+  }
+
+  Future pickFileFromPhone() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+    if (result != null) {
+      print(result.files.first.path.toString());
+      XFile file = XFile(result.files.first.path!);
+      selectedFile.value = result.files.first.name;
+      selectedFilePath.value = result.files.first.path;
+      var fileSize = getFileSizeString(bytes: result.files.first.size);
+      selectedFileSize.value = fileSize.toString();
+      print(fileSize);
+    }
+    print(result);
+    return selectedFile;
+  }
+
+  Future clickPhotoFromPhone() async {
+    XFile? result = await picker1.value.pickImage(source: ImageSource.camera);
+    if (result != null) {
+      print("path=====>${result.path.toString()}");
+      XFile file = XFile(result.path);
+      selectedFile.value = result.name;
+      selectedFilePath.value = result.path;
+
+      File imageFile = File(result.path);
+      int bytes = await imageFile.length(); // get file size in bytes
+      var fileSize = getFileSizeString(bytes: bytes);
+      selectedFileSize.value = fileSize.toString();
+      print(fileSize);
+    }
+    print(result);
+    return selectedFile;
+  }
+
+  onClickUploadButton() {
+    pickFileFromPhone().then((val) => {
+          if (val.value != '')
+            {
+              showUploadBtn.value = false,
+              showSelectedfile.value = true,
+              showWriteAssBtn.value = false,
+              showContinueBtn.value = true,
+              Utils.printLog(showContinueBtn.value),
+              Utils.printLog(selectedFile.value),
+              update(),
+            }
+        });
+  }
+
+  onClickTakeButton() {
+    clickPhotoFromPhone().then((val) => {
+          if (val.value != '')
+            {
+              showUploadBtn.value = false,
+              showSelectedfile.value = true,
+              showWriteAssBtn.value = false,
+              showContinueBtn.value = true,
+              Utils.printLog(showContinueBtn.value),
+              Utils.printLog(selectedFile.value),
+              update(),
+            }
+        });
+  }
+
+  openRoadmapOnScreenSchnge() {
+    if (needToCallApi.isTrue) {
+      update();
+      setRxRequestStatus(Status.LOADING);
+      isAnimationPlaying.value = true;
+      if (isRoadMapCompleted.value) {
+        currRoadmapId.value = "";
+        currRoadmapJourneyId.value = "";
+      }
+      getRoadmapJourneysListApi();
+      isMarkComplete.value = false;
+      update();
+    } else {
+      isMarkComplete.value = false;
+      needToCallApi.value = true;
+      update();
+    }
+    //else {
+    //   commonScreenController.selectedIndex.value = 16;
+    // }
+  }
+
+  openPDFScreen(PdfViewController pdfViewController, int index, int stepId, pdfLink, String title, {bool isTileCompleted = false}) async {
+    // Get.back();
+    await Future.delayed(Durations.medium1);
+    onArticlePDFOpen(pdfViewController, index, stepId, pdfLink, title, isTileCompleted: isTileCompleted);
+  }
+
+  onArticlePDFOpen(PdfViewController pdfViewController, int index, int stepId, pdfLink, String title, {bool isTileCompleted = false}) async {
+    pdfViewController.fileUrl.value = pdfLink;
+    pdfViewController.title.value = title;
+    pdfViewController.isQuizCompleted.value = isTileCompleted;
+    // commonScreenController.selectedIndex.value = 15;
+    // updateCurrIndexStepId(index, stepId);
+    update();
+    Get.toNamed(RoutesClass.pdfViewScreen);
+  }
+
+  onClickSubmitAssignment() async => await uploadFile();
+
+  onClickMarkAsCompletePdf(index, stepId, roadmapId) async {
+    await markLevelCompleted(index, stepId, roadmapId, isAnimate: false, lastTile: true);
+  }
+
+  void handleApiError(dynamic error) {
+    setError(error.toString());
+    showLoader.value = false;
+    setRxRequestStatus(Status.ERROR);
+
+    try {
+      var errorResponse = json.decode(error.toString());
+      if (errorResponse is Map && errorResponse.containsKey('message')) {
+        CommonMethods.showToast(errorResponse['message']);
+      } else {
+        CommonMethods.showToast("An unexpected error occurred.");
+      }
+    } catch (_) {
+      CommonMethods.showToast("An unexpected error occurred.");
+    }
+  }
+
+  final uploadFileData = UploadMediaModel().obs;
+  void setUploadFileData(UploadMediaModel value) => uploadFileData.value = value;
+
+  Future<void> uploadFile() async {
+    if (selectedFilePath.value == null || (selectedFilePath.value?.isEmpty ?? false)) {
+      CommonMethods.showToast("Please select a file first");
+      return;
+    }
+
+    final connection = await CommonMethods.checkInternetConnectivity();
+    Utils.printLog("CheckInternetConnection===> $connection");
+    if (!connection) {
+      CommonMethods.showToast(appStrings.weUnableCheckData);
+      return;
+    }
+
+    setRxRequestStatus(Status.LOADING);
+    final String filePath = selectedFilePath.value!;
+    final String mediaLibraryType = MediaLibraryType.roadmapAssignment.value;
+
+    try {
+      final value = await api.uploadApi(filePath, mediaLibraryType, "");
+      setUploadFileData(value);
+      Utils.printLog("Response===> $value");
+      if (value.statusCode == 200) {
+        Get.back(closeOverlays: true);
+        revertBack(showUpload: false, showWrite: false);
+        setRxRequestStatus(Status.COMPLETED);
+        await markLevelCompleted(currIndex.value, currStepId.value, currRoadmapId.value, assignmentLink: uploadFileData.value.data?.filePath, lastTile: true);
+      }
+    } catch (error, stackTrace) {
+      handleApiError(error);
+      Utils.printLog("Error===> $error");
+      Utils.printLog("stackTrace===> $stackTrace");
+    }
+  }
+
+  Future<void> getRoadmapApi({isAnimate = true, isMarkcomplete = false, isChangeRoadmap = false}) async {
+    isAnimationPlaying.value = isAnimate;
+    update();
+    if (!await CommonMethods.checkInternetConnectivity()) {
+      CommonMethods.showToast(appStrings.weUnableCheckData);
+      return;
+    }
+
+    try {
+      final response = await roadMapApi.getRoadmapByIdApi(currRoadmapId.value);
+      currRoadmapLevelLength.value = response.data?.roadmapSteps?.length ?? 0;
+      setRoadmapData(response);
+      Utils.printLog(lastUnlockedLevel.value);
+      final isLevelChange = (currRoadmapCompeletedSteps.value) != lastUnlockedLevel.value;
+
+      if (isLevelChange) {
+        lastUnlockedLevel.value = currRoadmapCompeletedSteps.value;
+
+        final prefs = await SharedPreferences.getInstance();
+        await AppPreferences.saveLevelCompleted(response.data?.id ?? '', lastUnlockedLevel.value);
+        await prefs.setInt("${currRoadmapId.value}-${Constants.lastUnlockedLevel}", (isMarkcomplete ? (lastUnlockedLevel.value + 1) : lastUnlockedLevel.value));
+
+        await initializeLevelPositions(isMarkComplete: (!isChangeRoadmap) ? isMarkcomplete : false);
+        await levelTagColor(response.data?.id ?? '', lastUnlockedLevel.value);
+        // await Future.delayed(Durations.medium1);
+        // final stopwatch = Stopwatch()..start();
+        // Future.delayed(const Duration(milliseconds: 600), () => scrollToLastUnlockedLevel(false, 0, currRoadmapId.value));
+        // stopwatch.stop();
+        // Utils.printLog('Execution time: ${stopwatch.elapsedMicroseconds} ms');
+      } else {
+        await initializeLevelPositions(isMarkComplete: (!isChangeRoadmap) ? isMarkcomplete : false);
+        await Future.delayed(Durations.medium1);
+      }
+      loadLastUnlockedLevel(currRoadmapId.value);
+
+      await Future.delayed(Durations.short1);
+      update();
+      setRxRequestStatus(Status.COMPLETED);
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      isAnimationPlaying.value = false;
+      update();
+    }
+  }
+
+  Future<void> getRoadmapJourneysListApi({bool isLoading = false, bool isAnimate = true, bool isMarkcomplete = false, isChangeRoadmap = false}) async {
+    if (!await CommonMethods.checkInternetConnectivity()) {
+      CommonMethods.showToast(appStrings.weUnableCheckData);
+      return;
+    }
+
+    try {
+      final response = await roadMapApi.getRoadmapJourneysListApi();
+      setRoadmapJourneysListData(response);
+      print('response===>${response.data}');
+      if (response.data?.isNotEmpty ?? false) {
+        getFilter(getRoadmapJourneysListData.value);
+      }
+
+      final hasData = response.data != null && response.data!.isNotEmpty;
+      isRoadmapAssign.value = hasData;
+
+      if (isRoadmapAssign.isTrue) {
+        if (hasData && (response.data?[0].roadmapJourneys?.isNotEmpty ?? false)) {
+          if ((response.data?[0].roadmapJourneys?[0].completedSteps ?? 0) < 1) {
+            showCaseView.value = true;
+          }
+        }
+        await _processRoadmapJourneys(response.data!);
+      } else {
+        commonScreenController.role.value == 'PARENT' ? commonScreenController.selectedIndex.value = 1 : commonScreenController.selectedIndex.value = 16;
+        return;
+      }
+
+      await getRoadmapApi(isAnimate: isAnimate, isMarkcomplete: isMarkcomplete, isChangeRoadmap: isChangeRoadmap);
+      coinsReviewController.getTotalCoinApi();
+      showLoader.value = false;
+    } catch (error) {
+      handleApiError(error);
+    }
+  }
+
+  Future<void> _processRoadmapJourneys(List<dynamic> data) async {
+    if (currRoadmapId.value.isEmpty) {
+      // First time initialization - find first pending roadmap with incomplete journey
+      bool foundIncomplete = false;
+
+      for (var roadmap in data) {
+        if (roadmap.status == "PENDING") {
+          if (currRoadmapJourneyId.value.isEmpty) {
+            currRoadmapJourneyId.value = roadmap.id!;
+          }
+
+          // Find first incomplete journey in this roadmap
+          for (var journey in roadmap.roadmapJourneys!) {
+            if (journey.completedSteps != journey.totalSteps) {
+              currRoadmapId.value = journey.id!;
+              currRoadmapCompeletedSteps.value = journey.completedSteps ?? 0;
+              currRoadmapTotalSteps.value = journey.totalSteps ?? 1;
+              currRoadmapMetadata.value = journey.metadataTags?[0].type.toString() ?? '';
+              foundIncomplete = true;
+              break;
+            }
+          }
+
+          if (foundIncomplete) {
+            break; // Found an incomplete journey, stop processing
+          }
+          // If no incomplete journey found, continue to next roadmap
+        }
+      }
+
+      // If all are complete, show the last roadmap and its last journey
+      if (!foundIncomplete) {
+        _setLastRoadmapAndJourney(data);
+      }
+    } else {
+      // We already have a current roadmap and journey
+      bool currentRoadmapFound = false;
+      bool currentJourneyFound = false;
+      bool currentJourneyIncomplete = false;
+
+      // Find specific roadmap and journey
+      for (var roadmap in data) {
+        print("roadmap2=====>$roadmap");
+        if (roadmap.status == "PENDING" && roadmap.id == currRoadmapJourneyId.value) {
+          currentRoadmapFound = true;
+
+          for (var journey in roadmap.roadmapJourneys!) {
+            print("journey2=====>$journey");
+            if (journey.id == currRoadmapId.value) {
+              currentJourneyFound = true;
+
+              if (journey.completedSteps != journey.totalSteps) {
+                // Current journey is still incomplete, update its stats
+                currentJourneyIncomplete = true;
+                currRoadmapCompeletedSteps.value = journey.completedSteps ?? 1;
+                currRoadmapMetadata.value = journey.metadataTags?[0].type.toString() ?? '';
+              }
+              break;
+            }
+          }
+
+          // If current journey is complete, find next incomplete journey in same roadmap
+          if (currentJourneyFound && !currentJourneyIncomplete) {
+            bool foundNextJourney = false;
+            bool passedCurrentJourney = false;
+
+            for (var journey in roadmap.roadmapJourneys!) {
+              if (passedCurrentJourney && journey.completedSteps != journey.totalSteps) {
+                nextRoadmapId.value = journey.id!;
+                // nextRoadmapCompeletedSteps.value = journey.completedSteps ?? 1;
+                nextRoadmapMetadata.value = journey.metadataTags?[0].type.toString() ?? '';
+                int completedSteps = currRoadmapCompeletedSteps.value;
+                int totalSteps = currRoadmapTotalSteps.value;
+                // if (currRoadmapCompeletedSteps.value ==
+                //     currRoadmapTotalSteps.value) {
+                //   showRoadmapCompletedLottie.value = true;
+                //   const RoadmapScreen()
+                //       .roadMapCompletedDialog(Get.width, Get.height);
+                // }
+                update();
+                foundNextJourney = true;
+                break;
+              }
+
+              if (journey.id == currRoadmapId.value) {
+                passedCurrentJourney = true;
+              }
+            }
+
+            // If no next journey found in current roadmap, find next roadmap
+            if (!foundNextJourney) {
+              // Try to find next roadmap with incomplete journey
+              if (!_findNextIncompleteRoadmap(data)) {
+                // If all are complete, show the last roadmap and its last journey
+                _setLastRoadmapAndJourney(data);
+              }
+            }
+          }
+          break;
+        }
+      }
+
+      // If current roadmap not found, reset to first available roadmap
+      if (!currentRoadmapFound) {
+        _resetToFirstRoadmap(data);
+      }
+    }
+  }
+
+// Helper method to find the next roadmap with incomplete journey
+  bool _findNextIncompleteRoadmap(List<dynamic> data) {
+    bool foundNextRoadmap = false;
+    bool passedCurrentRoadmap = false;
+
+    // Find the next pending roadmap
+    for (var roadmap in data) {
+      if (roadmap.status == "PENDING") {
+        if (passedCurrentRoadmap) {
+          // This is the next roadmap after the current one
+          currRoadmapJourneyId.value = roadmap.id!;
+
+          // Find first incomplete journey in this roadmap
+          bool foundIncomplete = false;
+          for (var journey in roadmap.roadmapJourneys!) {
+            if (journey.completedSteps != journey.totalSteps) {
+              currRoadmapId.value = journey.id!;
+              currRoadmapCompeletedSteps.value = journey.completedSteps ?? 1;
+              currRoadmapMetadata.value = journey.metadataTags?[0].type.toString() ?? '';
+              foundIncomplete = true;
+              break;
+            }
+          }
+
+          if (foundIncomplete) {
+            foundNextRoadmap = true;
+            break;
+          }
+        }
+
+        if (roadmap.id == currRoadmapJourneyId.value) {
+          passedCurrentRoadmap = true;
+        }
+      }
+    }
+
+    return foundNextRoadmap;
+  }
+
+// Helper method to reset to the first available roadmap
+  void _resetToFirstRoadmap(List<dynamic> data) {
+    bool foundIncomplete = false;
+
+    for (var roadmap in data) {
+      if (roadmap.status == "PENDING") {
+        currRoadmapJourneyId.value = roadmap.id!;
+
+        // Find first incomplete journey
+        for (var journey in roadmap.roadmapJourneys!) {
+          if (journey.completedSteps != journey.totalSteps) {
+            currRoadmapId.value = journey.id!;
+            currRoadmapCompeletedSteps.value = journey.completedSteps ?? 1;
+            currRoadmapMetadata.value = journey.metadataTags?[0].type.toString() ?? '';
+            foundIncomplete = true;
+            break;
+          }
+        }
+
+        if (foundIncomplete) {
+          break;
+        }
+      }
+    }
+
+    // If all are complete, show the last roadmap and its last journey
+    if (!foundIncomplete) {
+      _setLastRoadmapAndJourney(data);
+    }
+  }
+
+// Helper method to set the last roadmap and its last journey
+  void _setLastRoadmapAndJourney(List<dynamic> data) {
+    dynamic lastPendingRoadmap;
+
+    // Find the last pending roadmap
+    for (var roadmap in data) {
+      if (roadmap.status == "PENDING") {
+        lastPendingRoadmap = roadmap;
+      }
+    }
+
+    if (lastPendingRoadmap != null) {
+      currRoadmapJourneyId.value = lastPendingRoadmap.id!;
+
+      // Get the last journey in this roadmap
+      if (lastPendingRoadmap.roadmapJourneys != null && lastPendingRoadmap.roadmapJourneys!.isNotEmpty) {
+        var lastJourney = lastPendingRoadmap.roadmapJourneys!.last;
+        currRoadmapId.value = lastJourney.id!;
+        currRoadmapCompeletedSteps.value = lastJourney.completedSteps ?? lastJourney.totalSteps;
+        currRoadmapMetadata.value = lastJourney.metadataTags?[0].type.toString() ?? '';
+      }
+    }
+  }
+
+  void getFilter(GetUserRoadmapJourneyModel value) {
+    filteredData.clear();
+
+    totalSteps.value = 0;
+    totalCompletedSteps.value = 0;
+
+    for (int i = 0; i < (value.data?.length ?? 0); i++) {
+      final journeyId = value.data?[i].id;
+      final journeys = value.data?[i].roadmapJourneys;
+
+      for (int j = 0; j < (journeys?.length ?? 0); j++) {
+        final journey = journeys?[j];
+        final tags = journey?.metadataTags;
+        if (tags == null || tags.isEmpty) continue;
+
+        final tagType = tags.first.type ?? "Unknown";
+
+        final map = {
+          "journeyId": journeyId,
+          "id": journey?.id,
+          "name": journey?.name,
+          "completed": journey?.completedSteps,
+          "totalStep": journey?.totalSteps,
+        };
+
+        if (!filteredData.containsKey(tagType)) {
+          filteredData[tagType] = [];
+        }
+
+        filteredData[tagType]?.add(map);
+      }
+    }
+
+    print("Filtered Data => $filteredData");
+
+    filteredData.forEach((category, journeys) {
+      for (var journey in journeys) {
+        totalSteps.value += journey["totalStep"] as int;
+        totalCompletedSteps += journey["completed"] as int;
+      }
+    });
+    activeNodes = List.generate(filteredData.length, (index) => false.obs);
+    showCountToggle.value = true;
+  }
+}
